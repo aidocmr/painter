@@ -758,6 +758,10 @@ class CanvasDiscordBot(commands.Bot):
                 continue
 
             for a in assignments:
+                # Skip locked assignments — applies to all students, no per-student check needed
+                if a.get("is_locked"):
+                    continue
+
                 due_at_str = a.get("due_at")
                 if not due_at_str:
                     continue
