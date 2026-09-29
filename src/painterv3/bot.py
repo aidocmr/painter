@@ -568,6 +568,9 @@ class CanvasDiscordBot(commands.Bot):
         pending_server_ass: List[Tuple[int, str]] = []
         pending_reminders: List[Tuple[int, str]] = []
 
+        # Local cache for enrolled students per course (avoids duplicate DB queries)
+        enrollment_cache: Dict[int, List[int]] = {}
+
         # 1. Sync Servers via Donor Rotation
         server_configs = self.db.get_all_server_configs()
         course_announcements_pool: Dict[int, List[Dict[str, Any]]] = {}
@@ -680,7 +683,10 @@ class CanvasDiscordBot(commands.Bot):
             if not announcements:
                 continue
 
-            enrolled_students = self.db.get_users_enrolled_in_course(course_id)
+            enrolled_students = enrollment_cache.get(course_id)
+            if enrolled_students is None:
+                enrolled_students = self.db.get_users_enrolled_in_course(course_id)
+                enrollment_cache[course_id] = enrolled_students
             for ann in announcements:
                 ann_id = ann["id"]
                 for student_id in enrolled_students:
@@ -728,7 +734,10 @@ class CanvasDiscordBot(commands.Bot):
                         continue
 
             assignments = self.cached_assignments_pool.get(course_id, [])
-            enrolled_student_ids = self.db.get_users_enrolled_in_course(course_id)
+            enrolled_student_ids = enrollment_cache.get(course_id)
+            if enrolled_student_ids is None:
+                enrolled_student_ids = self.db.get_users_enrolled_in_course(course_id)
+                enrollment_cache[course_id] = enrolled_student_ids
             if not enrolled_student_ids or not assignments:
                 continue
 
