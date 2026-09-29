@@ -1,0 +1,27 @@
+[project]
+name = "painterv3"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "aidocmr", email = "78833301+aidocmr@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "canvasapi>=3.6.0",
+    "discord-py>=2.7.1",
+    "python-dotenv>=1.2.3",
+]
+
+[project.scripts]
+painterv3 = "painterv3:main"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
