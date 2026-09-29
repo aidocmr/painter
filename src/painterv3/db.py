@@ -27,6 +27,9 @@ class Database:
         return conn
 
     def _init_db(self):
+        parent_dir = os.path.dirname(self.db_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.executescript("""

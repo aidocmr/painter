@@ -89,6 +89,55 @@ uv run python main.py
 
 ---
 
+## Deployment with Docker
+
+### Option 1: Docker Compose (Recommended)
+
+1. Ensure your `.env` is configured:
+   ```bash
+   cp .env.example .env
+   # Set BOT_TOKEN and optional CANVAS_API_URL
+   ```
+
+2. Build and start the bot container:
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. View live logs:
+   ```bash
+   docker compose logs -f
+   ```
+
+4. Stop the container:
+   ```bash
+   docker compose down
+   ```
+
+### Option 2: Docker CLI
+
+1. Build the image:
+   ```bash
+   docker build -t painterv3:latest .
+   ```
+
+2. Run with persistent volume for SQLite database storage:
+   ```bash
+   docker run -d \
+     --name painterv3-bot \
+     --restart unless-stopped \
+     --env-file .env \
+     -v painterv3-data:/app/data \
+     painterv3:latest
+   ```
+
+3. View logs:
+   ```bash
+   docker logs -f painterv3-bot
+   ```
+
+---
+
 ## Running Tests
 
 All database operations, donor rotation algorithms, Canvas data parsing, slash commands, and synchronization flows are covered by automated tests:

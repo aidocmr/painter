@@ -1,0 +1,15 @@
+services:
+  painterv3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: painterv3:latest
+    container_name: painterv3-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - painterv3-data:/app/data
+
+volumes:
+  painterv3-data:
