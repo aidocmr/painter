@@ -564,6 +564,12 @@ class CanvasDiscordBot(commands.Bot):
         """
         counts = {"user_dms": 0, "server_announcements": 0, "server_assignments": 0, "reminders": 0}
 
+        # Batch accumulators — flushed to DB in one transaction at the end
+        pending_user_ann: List[Tuple[int, str]] = []
+        pending_server_ann: List[Tuple[int, str]] = []
+        pending_server_ass: List[Tuple[int, str]] = []
+        pending_reminders: List[Tuple[int, str]] = []
+
         # 1. Sync Servers via Donor Rotation
         server_configs = self.db.get_all_server_configs()
         course_announcements_pool: Dict[int, List[Dict[str, Any]]] = {}
@@ -607,7 +613,7 @@ class CanvasDiscordBot(commands.Bot):
                             try:
                                 await ann_channel.send(embed=embed)
                                 self.server_announcements_cache.add((guild_id, ann_id))
-                                self.db.record_server_announcement_delivery(guild_id, ann_id)
+                                pending_server_ann.append((guild_id, ann_id))
                                 counts["server_announcements"] += 1
                             except discord.HTTPException as e:
                                 print(f"[Bot] Failed to send announcement to server {guild_id}: {e}")
@@ -648,7 +654,7 @@ class CanvasDiscordBot(commands.Bot):
                             try:
                                 await ass_channel.send(embed=embed)
                                 self.server_assignments_cache.add((guild_id, ass_id))
-                                self.db.record_server_assignment_delivery(guild_id, ass_id)
+                                pending_server_ass.append((guild_id, ass_id))
                                 counts["server_assignments"] += 1
                             except discord.HTTPException as e:
                                 print(f"[Bot] Failed to send assignment to server {guild_id}: {e}")
@@ -699,12 +705,12 @@ class CanvasDiscordBot(commands.Bot):
 
                             await user.send(embed=embed)
                             self.user_announcements_cache.add((student_id, ann_id))
-                            self.db.record_user_announcement_delivery(student_id, ann_id)
+                            pending_user_ann.append((student_id, ann_id))
                             counts["user_dms"] += 1
                     except discord.Forbidden:
                         # User has DMs closed; still mark delivered so we don't retry endlessly
                         self.user_announcements_cache.add((student_id, ann_id))
-                        self.db.record_user_announcement_delivery(student_id, ann_id)
+                        pending_user_ann.append((student_id, ann_id))
                     except Exception as e:
                         print(f"[Bot] Failed to send DM to student {student_id}: {e}")
 
@@ -764,7 +770,7 @@ class CanvasDiscordBot(commands.Bot):
                     if is_done:
                         # Completed or locked; record reminder so we do not re-check
                         self.user_reminders_cache.add((student_id, ass_id))
-                        self.db.record_deadline_reminder(student_id, ass_id)
+                        pending_reminders.append((student_id, ass_id))
                         continue
 
                     # Student has not completed it: send 12-hour reminder DM
@@ -799,8 +805,10 @@ class CanvasDiscordBot(commands.Bot):
                         print(f"[Bot] Failed to send reminder DM to {student_id}: {e}")
 
                     self.user_reminders_cache.add((student_id, ass_id))
-                    self.db.record_deadline_reminder(student_id, ass_id)
+                    pending_reminders.append((student_id, ass_id))
 
+        # Flush all pending deliveries to DB in one transaction
+        self.db.flush_deliveries(pending_user_ann, pending_server_ann, pending_server_ass, pending_reminders)
         return counts
 
     @tasks.loop(minutes=5)

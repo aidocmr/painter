@@ -347,15 +347,6 @@ class Database:
                 "INSERT OR IGNORE INTO user_announcement_deliveries (discord_id, announcement_id) VALUES (?, ?)",
                 (discord_id, str(announcement_id)),
             )
-            conn.commit()
-
-    def is_announcement_delivered_to_server(self, guild_id: int, announcement_id: str) -> bool:
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM server_announcement_deliveries WHERE guild_id = ? AND announcement_id = ?",
-                (guild_id, str(announcement_id)),
-            ).fetchone()
-            return row is not None
 
     def record_server_announcement_delivery(self, guild_id: int, announcement_id: str) -> None:
         with self._get_connection() as conn:
@@ -363,15 +354,6 @@ class Database:
                 "INSERT OR IGNORE INTO server_announcement_deliveries (guild_id, announcement_id) VALUES (?, ?)",
                 (guild_id, str(announcement_id)),
             )
-            conn.commit()
-
-    def is_assignment_delivered_to_server(self, guild_id: int, assignment_id: str) -> bool:
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM server_assignment_deliveries WHERE guild_id = ? AND assignment_id = ?",
-                (guild_id, str(assignment_id)),
-            ).fetchone()
-            return row is not None
 
     def record_server_assignment_delivery(self, guild_id: int, assignment_id: str) -> None:
         with self._get_connection() as conn:
@@ -379,15 +361,6 @@ class Database:
                 "INSERT OR IGNORE INTO server_assignment_deliveries (guild_id, assignment_id) VALUES (?, ?)",
                 (guild_id, str(assignment_id)),
             )
-            conn.commit()
-
-    def is_deadline_reminder_sent(self, discord_id: int, assignment_id: str) -> bool:
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM user_deadline_reminders WHERE discord_id = ? AND assignment_id = ?",
-                (discord_id, str(assignment_id)),
-            ).fetchone()
-            return row is not None
 
     def record_deadline_reminder(self, discord_id: int, assignment_id: str) -> None:
         with self._get_connection() as conn:
@@ -395,6 +368,36 @@ class Database:
                 "INSERT OR IGNORE INTO user_deadline_reminders (discord_id, assignment_id) VALUES (?, ?)",
                 (discord_id, str(assignment_id)),
             )
+
+    def flush_deliveries(
+        self,
+        user_announcements: list[tuple[int, str]],
+        server_announcements: list[tuple[int, str]],
+        server_assignments: list[tuple[int, str]],
+        deadline_reminders: list[tuple[int, str]],
+    ) -> None:
+        """Batch-insert all pending deliveries in a single transaction."""
+        with self._get_connection() as conn:
+            if user_announcements:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO user_announcement_deliveries (discord_id, announcement_id) VALUES (?, ?)",
+                    user_announcements,
+                )
+            if server_announcements:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO server_announcement_deliveries (guild_id, announcement_id) VALUES (?, ?)",
+                    server_announcements,
+                )
+            if server_assignments:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO server_assignment_deliveries (guild_id, assignment_id) VALUES (?, ?)",
+                    server_assignments,
+                )
+            if deadline_reminders:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO user_deadline_reminders (discord_id, assignment_id) VALUES (?, ?)",
+                    deadline_reminders,
+                )
             conn.commit()
 
     def load_cache_sets(self) -> Tuple[set, set, set, set]:
