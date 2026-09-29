@@ -15,6 +15,7 @@ from painterv3.canvas_client import (
     async_fetch_assignments,
     async_fetch_todo_items,
     async_check_user_assignment_completion,
+    parse_canvas_date,
 )
 
 # ponytail: In-memory cache sets loaded at startup for deduplication.
@@ -297,11 +298,8 @@ class CanvasDiscordBot(commands.Bot):
                     if not include_undated or past_due:
                         continue
                 else:
-                    try:
-                        due_dt = datetime.strptime(due_at_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                        is_overdue = now > due_dt
-                    except Exception:
-                        is_overdue = False
+                    due_dt = parse_canvas_date(due_at_str)
+                    is_overdue = now > due_dt if due_dt else False
 
                     if past_due and not is_overdue:
                         continue
@@ -350,11 +348,11 @@ class CanvasDiscordBot(commands.Bot):
             for a in filtered[:15]:
                 due_str = "No due date"
                 if a.get("due_at"):
-                    try:
-                        due_dt = datetime.strptime(a["due_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    due_dt = parse_canvas_date(a["due_at"])
+                    if due_dt:
                         ts = int(due_dt.timestamp())
                         due_str = f"<t:{ts}:F> (<t:{ts}:R>)"
-                    except Exception:
+                    else:
                         due_str = a["due_at"]
 
                 pts = f" | {a['points_possible']} pts" if a.get("points_possible") is not None else ""
@@ -417,11 +415,11 @@ class CanvasDiscordBot(commands.Bot):
             for item in todos[:15]:
                 due_str = "No due date"
                 if item.get("due_at"):
-                    try:
-                        due_dt = datetime.strptime(item["due_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    due_dt = parse_canvas_date(item["due_at"])
+                    if due_dt:
                         ts = int(due_dt.timestamp())
                         due_str = f"<t:{ts}:F> (<t:{ts}:R>)"
-                    except Exception:
+                    else:
                         due_str = item["due_at"]
 
                 pts = f" | {item['points_possible']} pts" if item.get("points_possible") is not None else ""
@@ -633,11 +631,11 @@ class CanvasDiscordBot(commands.Bot):
                         if (guild_id, ass_id) not in self.server_assignments_cache:
                             due_str = "No due date"
                             if a.get("due_at"):
-                                try:
-                                    due_dt = datetime.strptime(a["due_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                                due_dt = parse_canvas_date(a["due_at"])
+                                if due_dt:
                                     ts = int(due_dt.timestamp())
                                     due_str = f"<t:{ts}:F> (<t:{ts}:R>)"
-                                except Exception:
+                                else:
                                     due_str = a["due_at"]
 
                             embed = discord.Embed(
@@ -739,9 +737,8 @@ class CanvasDiscordBot(commands.Bot):
                 if not due_at_str:
                     continue
 
-                try:
-                    due_dt = datetime.strptime(due_at_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                except Exception:
+                due_dt = parse_canvas_date(due_at_str)
+                if not due_dt:
                     continue
 
                 time_left = (due_dt - now).total_seconds()

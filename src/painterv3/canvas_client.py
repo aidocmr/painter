@@ -10,6 +10,18 @@ from canvasapi.exceptions import CanvasException
 # Ceiling: High concurrency thread pool contention under tens of thousands of concurrent requests.
 # Upgrade path: Direct async HTTP client (aiohttp) calling Canvas REST API directly.
 
+_CANVAS_DATE_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def parse_canvas_date(date_str: Optional[str]) -> Optional[datetime]:
+    """Parse a Canvas ISO date string into a timezone-aware datetime, or None on failure."""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, _CANVAS_DATE_FMT).replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
 
 def clean_html(raw_html: Optional[str], max_length: int = 1000) -> str:
     """Converts Canvas HTML formatted text to clean, readable Discord-friendly markdown text."""
@@ -100,20 +112,14 @@ def is_assignment_locked(assignment: Any) -> bool:
     now = datetime.now(timezone.utc)
 
     if isinstance(lock_at, str):
-        try:
-            lock_dt = datetime.strptime(lock_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            if now >= lock_dt:
-                return True
-        except Exception:
-            pass
+        lock_dt = parse_canvas_date(lock_at)
+        if lock_dt and now >= lock_dt:
+            return True
 
     if isinstance(unlock_at, str):
-        try:
-            unlock_dt = datetime.strptime(unlock_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            if now < unlock_dt:
-                return True
-        except Exception:
-            pass
+        unlock_dt = parse_canvas_date(unlock_at)
+        if unlock_dt and now < unlock_dt:
+            return True
 
     return False
 
