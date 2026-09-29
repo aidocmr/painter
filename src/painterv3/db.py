@@ -16,15 +16,18 @@ DEFAULT_DB_PATH = os.getenv("DATABASE_PATH", "canvas_bot.db")
 class Database:
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
         self.db_path = db_path
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA foreign_keys = ON")
+        self._conn.execute("PRAGMA journal_mode = WAL")
+        self._conn.execute("PRAGMA synchronous = NORMAL")
         self._init_db()
 
+    def close(self) -> None:
+        self._conn.close()
+
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        return conn
+        return self._conn
 
     def _init_db(self):
         parent_dir = os.path.dirname(self.db_path)
