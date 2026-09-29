@@ -309,32 +309,45 @@ class CanvasClient:
             return False
 
 
-# --- Async Wrappers ---
+# ponytail: Simple dict cache for CanvasClient instances.
+# Ceiling: Unbounded growth if tokens are frequently rotated.
+# Upgrade path: LRU with functools.lru_cache or bounded dict with eviction.
+_client_cache: Dict[Tuple[str, str], "CanvasClient"] = {}
+
+
+def _get_client(url: str, token: str) -> "CanvasClient":
+    key = (url, token)
+    client = _client_cache.get(key)
+    if client is None:
+        client = CanvasClient(url, token)
+        _client_cache[key] = client
+    return client
+
 
 async def async_validate_and_get_profile(url: str, token: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    client = CanvasClient(url, token)
+    client = _get_client(url, token)
     return await asyncio.to_thread(client.validate_and_get_profile)
 
 
 async def async_fetch_announcements(url: str, token: str, course_ids: List[int]) -> List[Dict[str, Any]]:
-    client = CanvasClient(url, token)
+    client = _get_client(url, token)
     return await asyncio.to_thread(client.fetch_announcements_batch, course_ids)
 
 
 async def async_fetch_assignments(
     url: str, token: str, course_id: int, uncompleted_only: bool = False
 ) -> List[Dict[str, Any]]:
-    client = CanvasClient(url, token)
+    client = _get_client(url, token)
     return await asyncio.to_thread(client.fetch_course_assignments, course_id, uncompleted_only)
 
 
 async def async_fetch_todo_items(url: str, token: str) -> List[Dict[str, Any]]:
-    client = CanvasClient(url, token)
+    client = _get_client(url, token)
     return await asyncio.to_thread(client.fetch_todo_items)
 
 
 async def async_check_user_assignment_completion(
     url: str, token: str, course_id: int, assignment_id: int
 ) -> bool:
-    client = CanvasClient(url, token)
+    client = _get_client(url, token)
     return await asyncio.to_thread(client.check_user_assignment_completion, course_id, assignment_id)
