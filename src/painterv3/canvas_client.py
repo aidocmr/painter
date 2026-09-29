@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from canvasapi import Canvas
-from canvasapi.exceptions import CanvasException, InvalidAccessToken
+from canvasapi.exceptions import CanvasException
 
 # ponytail: Synchronous canvasapi executed via asyncio.to_thread.
 # Ceiling: High concurrency thread pool contention under tens of thousands of concurrent requests.

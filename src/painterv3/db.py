@@ -170,11 +170,6 @@ class Database:
             conn.commit()
             return cursor.rowcount > 0
 
-    def set_user_active(self, discord_id: int, is_active: bool) -> None:
-        with self._get_connection() as conn:
-            conn.execute("UPDATE users SET is_active = ? WHERE discord_id = ?", (1 if is_active else 0, discord_id))
-            conn.commit()
-
     def get_user_enrollments(self, discord_id: int) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             rows = conn.execute(
