@@ -266,14 +266,18 @@ class CanvasDiscordBot(commands.Bot):
                 target_course_ids = list({e["course_id"] for e in enrollments})
 
             all_assignments = []
-            for cid in target_course_ids[:10]:
+
+            async def _fetch_course(cid):
                 try:
-                    assignments = await async_fetch_assignments(
+                    return await async_fetch_assignments(
                         user["canvas_url"], user["canvas_token"], cid, uncompleted_only=False
                     )
-                    all_assignments.extend(assignments)
                 except Exception:
-                    pass
+                    return []
+
+            results = await asyncio.gather(*[_fetch_course(cid) for cid in target_course_ids[:10]])
+            for assignments in results:
+                all_assignments.extend(assignments)
 
             now = datetime.now(timezone.utc)
             filtered = []
@@ -664,21 +668,26 @@ class CanvasDiscordBot(commands.Bot):
 
         # 2. Sync User Announcements (DMs to all enrolled students)
         distinct_course_ids = self.db.get_all_distinct_course_ids()
-        for course_id in distinct_course_ids:
-            if course_id in course_announcements_pool:
-                announcements = course_announcements_pool[course_id]
-            else:
-                active_donor = self.db.get_any_active_token_for_course(course_id)
-                if not active_donor:
-                    continue
+
+        # Pre-fetch announcements for courses not already in pool (concurrently)
+        missing_ann_courses = [cid for cid in distinct_course_ids if cid not in course_announcements_pool]
+        if missing_ann_courses:
+            donors_for_ann = {cid: self.db.get_any_active_token_for_course(cid) for cid in missing_ann_courses}
+
+            async def _fetch_ann(cid, donor):
                 try:
-                    announcements = await async_fetch_announcements(
-                        active_donor["canvas_url"], active_donor["canvas_token"], [course_id]
-                    )
-                    course_announcements_pool[course_id] = announcements
+                    return cid, await async_fetch_announcements(donor["canvas_url"], donor["canvas_token"], [cid])
                 except Exception as e:
-                    print(f"[Bot] Error fetching announcements for course {course_id}: {e}")
-                    continue
+                    print(f"[Bot] Error fetching announcements for course {cid}: {e}")
+                    return cid, None
+
+            ann_tasks = [_fetch_ann(cid, d) for cid, d in donors_for_ann.items() if d]
+            for cid, result in await asyncio.gather(*ann_tasks):
+                if result is not None:
+                    course_announcements_pool[cid] = result
+
+        for course_id in distinct_course_ids:
+            announcements = course_announcements_pool.get(course_id)
 
             if not announcements:
                 continue
@@ -720,18 +729,25 @@ class CanvasDiscordBot(commands.Bot):
 
         # 3. 12-Hour Deadline Reminders (Cache assignments & check student completion)
         now = datetime.now(timezone.utc)
+
+        # Pre-fetch assignments for courses not already cached (concurrently)
+        missing_ass_courses = [cid for cid in distinct_course_ids if cid not in self.cached_assignments_pool]
+        if missing_ass_courses:
+            donors_for_ass = {cid: self.db.get_any_active_token_for_course(cid) for cid in missing_ass_courses}
+
+            async def _fetch_ass(cid, donor):
+                try:
+                    return cid, await async_fetch_assignments(donor["canvas_url"], donor["canvas_token"], cid)
+                except Exception as e:
+                    print(f"[Bot] Error caching assignments for course {cid}: {e}")
+                    return cid, None
+
+            ass_tasks = [_fetch_ass(cid, d) for cid, d in donors_for_ass.items() if d]
+            for cid, result in await asyncio.gather(*ass_tasks):
+                if result is not None:
+                    self.cached_assignments_pool[cid] = result
+
         for course_id in distinct_course_ids:
-            if course_id not in self.cached_assignments_pool:
-                active_donor = self.db.get_any_active_token_for_course(course_id)
-                if active_donor:
-                    try:
-                        assignments = await async_fetch_assignments(
-                            active_donor["canvas_url"], active_donor["canvas_token"], course_id
-                        )
-                        self.cached_assignments_pool[course_id] = assignments
-                    except Exception as e:
-                        print(f"[Bot] Error caching assignments for course {course_id}: {e}")
-                        continue
 
             assignments = self.cached_assignments_pool.get(course_id, [])
             enrolled_student_ids = enrollment_cache.get(course_id)
