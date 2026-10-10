@@ -1,8 +1,15 @@
+"""!
+@file canvas_client.py
+@brief Canvas LMS REST API integration wrapper.
+@details Handles asynchronous thread-pool calls into the canvasapi library,
+         HTML cleanup for Discord markdown, submission verification, and To-Do list fetching.
+"""
+
 import asyncio
 import html
 import re
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from canvasapi import Canvas
 from canvasapi.exceptions import CanvasException
 
@@ -14,7 +21,11 @@ _CANVAS_DATE_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def parse_canvas_date(date_str: Optional[str]) -> Optional[datetime]:
-    """Parse a Canvas ISO date string into a timezone-aware datetime, or None on failure."""
+    """!
+    @brief Parses a Canvas ISO date string into a timezone-aware UTC datetime.
+    @param date_str Canvas ISO 8601 formatted string (e.g. '2026-10-10T23:59:59Z').
+    @return Timezone-aware UTC datetime object, or None if parsing fails.
+    """
     if not date_str:
         return None
     try:
@@ -24,14 +35,19 @@ def parse_canvas_date(date_str: Optional[str]) -> Optional[datetime]:
 
 
 def clean_html(raw_html: Optional[str], max_length: int = 1000) -> str:
-    """Converts Canvas HTML formatted text to clean, readable Discord-friendly markdown text."""
+    """!
+    @brief Converts Canvas HTML formatted descriptions into clean Discord-friendly markdown.
+    @param raw_html The raw HTML string returned by Canvas API.
+    @param max_length Maximum character length before truncating with ellipses.
+    @return Cleaned markdown string.
+    """
     if not raw_html:
         return ""
     text = raw_html
 
     # Convert links <a href="url">text</a> -> [text](url)
     text = re.sub(r'<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r'[\2](\1)', text, flags=re.DOTALL | re.IGNORECASE)
-    
+
     # Convert bold & italics
     text = re.sub(r'<(?:strong|b)>(.*?)</(?:strong|b)>', r'**\1**', text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'<(?:em|i)>(.*?)</(?:em|i)>', r'*\1*', text, flags=re.DOTALL | re.IGNORECASE)
@@ -56,7 +72,13 @@ def clean_html(raw_html: Optional[str], max_length: int = 1000) -> str:
 
 
 def is_submission_completed(sub_data: Any) -> bool:
-    """Checks whether a Canvas assignment submission indicates completion."""
+    """!
+    @brief Checks whether a Canvas assignment submission indicates completion.
+    @details Examines submitted_at timestamp, workflow_state ('submitted', 'graded', 'pending_review'),
+             grade, score, and excused status.
+    @param sub_data Submission object or dictionary.
+    @return True if the assignment submission is completed, False otherwise.
+    """
     if not sub_data:
         return False
 
@@ -88,7 +110,11 @@ def is_submission_completed(sub_data: Any) -> bool:
 
 
 def is_assignment_locked(assignment: Any) -> bool:
-    """Checks whether an assignment is locked or unavailable to the student."""
+    """!
+    @brief Checks whether an assignment is locked or unavailable to the student.
+    @param assignment Canvas assignment object or dictionary.
+    @return True if locked or unavailable, False otherwise.
+    """
     if not assignment:
         return False
 
@@ -125,14 +151,24 @@ def is_assignment_locked(assignment: Any) -> bool:
 
 
 class CanvasClient:
+    """!
+    @brief Wrapper client for interacting with a specific Canvas LMS institution.
+    """
+
     def __init__(self, base_url: str, token: str):
+        """!
+        @brief Initializes Canvas API client.
+        @param base_url Base URL of Canvas institution (e.g. 'https://tip.instructure.com').
+        @param token User API access token.
+        """
         self.base_url = base_url.rstrip("/")
         self.token = token
         self._canvas = Canvas(self.base_url, self.token)
 
     def validate_and_get_profile(self) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Validates the token, retrieves current user info, and returns user info + active enrollments.
+        """!
+        @brief Validates the token and retrieves user profile with active section enrollments.
+        @return Tuple of (user_info: dict, enrollments: list[dict]).
         """
         user = self._canvas.get_current_user()
         user_info = {
@@ -166,9 +202,10 @@ class CanvasClient:
         return user_info, enrollments
 
     def fetch_announcements_batch(self, course_ids: List[int]) -> List[Dict[str, Any]]:
-        """
-        Fetches announcements in bulk using Canvas context codes.
-        Optimized to batch up to 50 courses per request.
+        """!
+        @brief Fetches announcements in bulk using Canvas context codes.
+        @param course_ids List of Canvas course IDs.
+        @return List of parsed announcement dictionaries.
         """
         if not course_ids:
             return []
@@ -200,7 +237,12 @@ class CanvasClient:
     def fetch_course_assignments(
         self, course_id: int, uncompleted_only: bool = False
     ) -> List[Dict[str, Any]]:
-        """Fetches active assignments for a given course, optionally filtering for uncompleted only."""
+        """!
+        @brief Fetches assignments for a specific course.
+        @param course_id Canvas Course ID.
+        @param uncompleted_only Filter out completed or locked assignments if True.
+        @return List of assignment dictionaries.
+        """
         try:
             course = self._canvas.get_course(course_id)
             assignments = list(course.get_assignments(include=["submission"]))
@@ -226,13 +268,14 @@ class CanvasClient:
                 "description_clean": clean_html(getattr(a, "description", "")),
                 "is_completed": completed,
                 "is_locked": locked,
+                "submission": sub,
             })
         return results
 
     def fetch_todo_items(self) -> List[Dict[str, Any]]:
-        """
-        Fetches the current user's To-Do list from Canvas (/api/v1/users/self/todo),
-        filtering out completed or locked assignments.
+        """!
+        @brief Fetches the current user's To-Do list from Canvas (/api/v1/users/self/todo).
+        @return List of pending To-Do items.
         """
         try:
             todos = list(self._canvas.get_todo_items())
@@ -296,7 +339,12 @@ class CanvasClient:
         return results
 
     def check_user_assignment_completion(self, course_id: int, assignment_id: int) -> bool:
-        """Checks if the user has completed a specific assignment or if it is locked."""
+        """!
+        @brief Checks if the authenticated user has completed a specific assignment or if locked.
+        @param course_id Canvas Course ID.
+        @param assignment_id Canvas Assignment ID.
+        @return True if completed or locked, False otherwise.
+        """
         try:
             course = self._canvas.get_course(course_id)
             assignment = course.get_assignment(assignment_id, include=["submission"])
@@ -308,6 +356,39 @@ class CanvasClient:
             print(f"[CanvasClient] Error checking assignment completion ({assignment_id}): {e}")
             return False
 
+    def get_user_submission(self, course_id: int, assignment_id: int) -> Optional[Dict[str, Any]]:
+        """!
+        @brief Fetches verified submission details directly from Canvas API using user credentials.
+        @note Prevents false self-reports by inspecting Canvas submission timestamps.
+        @param course_id Canvas Course ID.
+        @param assignment_id Canvas Assignment ID.
+        @return Dictionary containing submission details or None if not submitted.
+        """
+        try:
+            course = self._canvas.get_course(course_id)
+            assignment = course.get_assignment(assignment_id, include=["submission"])
+            sub = getattr(assignment, "submission", None)
+            if not sub:
+                return None
+            if isinstance(sub, dict):
+                submitted_at = sub.get("submitted_at")
+                workflow_state = sub.get("workflow_state")
+            else:
+                submitted_at = getattr(sub, "submitted_at", None)
+                workflow_state = getattr(sub, "workflow_state", None)
+
+            completed = is_submission_completed(sub)
+            return {
+                "assignment_id": str(assignment_id),
+                "course_id": course_id,
+                "submitted_at": submitted_at,
+                "workflow_state": workflow_state,
+                "is_completed": completed,
+            }
+        except CanvasException as e:
+            print(f"[CanvasClient] Error fetching verified submission ({assignment_id}): {e}")
+            return None
+
 
 # ponytail: Simple dict cache for CanvasClient instances.
 # Ceiling: Unbounded growth if tokens are frequently rotated.
@@ -316,6 +397,12 @@ _client_cache: Dict[Tuple[str, str], "CanvasClient"] = {}
 
 
 def _get_client(url: str, token: str) -> "CanvasClient":
+    """!
+    @brief Returns or creates a cached CanvasClient instance.
+    @param url Canvas institution base URL.
+    @param token Canvas user access token.
+    @return CanvasClient instance.
+    """
     key = (url, token)
     client = _client_cache.get(key)
     if client is None:
@@ -325,11 +412,17 @@ def _get_client(url: str, token: str) -> "CanvasClient":
 
 
 async def async_validate_and_get_profile(url: str, token: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """!
+    @brief Async wrapper to validate token and fetch profile with section enrollments.
+    """
     client = _get_client(url, token)
     return await asyncio.to_thread(client.validate_and_get_profile)
 
 
 async def async_fetch_announcements(url: str, token: str, course_ids: List[int]) -> List[Dict[str, Any]]:
+    """!
+    @brief Async wrapper to fetch announcements for courses in bulk.
+    """
     client = _get_client(url, token)
     return await asyncio.to_thread(client.fetch_announcements_batch, course_ids)
 
@@ -337,11 +430,17 @@ async def async_fetch_announcements(url: str, token: str, course_ids: List[int])
 async def async_fetch_assignments(
     url: str, token: str, course_id: int, uncompleted_only: bool = False
 ) -> List[Dict[str, Any]]:
+    """!
+    @brief Async wrapper to fetch course assignments.
+    """
     client = _get_client(url, token)
     return await asyncio.to_thread(client.fetch_course_assignments, course_id, uncompleted_only)
 
 
 async def async_fetch_todo_items(url: str, token: str) -> List[Dict[str, Any]]:
+    """!
+    @brief Async wrapper to fetch user's Canvas To-Do list items.
+    """
     client = _get_client(url, token)
     return await asyncio.to_thread(client.fetch_todo_items)
 
@@ -349,5 +448,18 @@ async def async_fetch_todo_items(url: str, token: str) -> List[Dict[str, Any]]:
 async def async_check_user_assignment_completion(
     url: str, token: str, course_id: int, assignment_id: int
 ) -> bool:
+    """!
+    @brief Async wrapper to verify user assignment completion status.
+    """
     client = _get_client(url, token)
     return await asyncio.to_thread(client.check_user_assignment_completion, course_id, assignment_id)
+
+
+async def async_get_user_submission(
+    url: str, token: str, course_id: int, assignment_id: int
+) -> Optional[Dict[str, Any]]:
+    """!
+    @brief Async wrapper to retrieve verified submission details from Canvas API.
+    """
+    client = _get_client(url, token)
+    return await asyncio.to_thread(client.get_user_submission, course_id, assignment_id)
